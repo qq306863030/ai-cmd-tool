@@ -14,7 +14,21 @@ class AICLI {
   }
   // 解析配置文件
   initialize() {
-    const service = this.config.ai?.type || "ollama";
+    // Get current AI configuration
+    let currentAiConfig;
+    if (Array.isArray(this.config.ai)) {
+      const currentName = this.config.currentAi || "default";
+      currentAiConfig = this.config.ai.find(config => config.name === currentName);
+      if (!currentAiConfig) {
+        // If current configuration not found, use the first one
+        currentAiConfig = this.config.ai[0];
+      }
+    } else {
+      // Legacy configuration format
+      currentAiConfig = this.config.ai;
+    }
+    
+    const service = currentAiConfig?.type || "ollama";
     if (service === "deepseek") {
       this.aiService = new DeepSeekService();
     } else if (service === "openai") {
@@ -39,7 +53,7 @@ class AICLI {
     // 程序启动后执行插件的初始化生命周期函数
     this.pluginManager.onInitialize();
   }
-
+  // 单轮对话
   async run(userPrompt) {
     try {
       // AI请求前的钩子
@@ -49,8 +63,7 @@ class AICLI {
       // AI请求后的钩子
       const processedResponse =
         await this.pluginManager.onAfterAIRequest(response);
-
-      const steps = this.parseResponse(processedResponse);
+      const steps = this._parseResponse(processedResponse);
 
       // 解析完成后的钩子
       const processedSteps = await this.pluginManager.onAfterParse(steps);
@@ -82,7 +95,7 @@ class AICLI {
       throw error;
     }
   }
-
+  // 多轮对话
   startInteractive() {
     const rl = readline.createInterface({
       input: process.stdin,
@@ -119,7 +132,10 @@ class AICLI {
     });
   }
 
-  parseResponse(response) {
+  _parseResponse(response) {
+    if (!response) {
+      throw new Error('AI returned empty data')
+    }
     response = response.trim().replace(/^```json\n|```$/g, "");
     try {
       const steps = JSON.parse(response);

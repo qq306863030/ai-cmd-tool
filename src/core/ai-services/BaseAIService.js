@@ -2,12 +2,23 @@ const path = require("path");
 const { OpenAI } = require("openai");
 const os = require("os");
 const { loading } = require("../utils");
+const fs = require("fs-extra");
 
 class BaseAIService {
   constructor() {
     const userConfigPath = path.join(os.homedir(), ".ai-cmd.config.js");
     const config = require(userConfigPath);
-    this.config = config.ai;
+    this.name = config.currentAi || "I";
+    // Get current AI configuration
+    if (Array.isArray(config.ai)) {
+      const currentName = config.currentAi || "default";
+      const currentAiConfig = config.ai.find(cfg => cfg.name === currentName);
+      this.config = currentAiConfig || config.ai[0];
+    } else {
+      // Legacy configuration format
+      this.config = config.ai;
+    }
+    
     this.conversationHistory = [];
     this.createClient();
     this.baseFunctionDescription = "";
@@ -63,21 +74,29 @@ Role & Capabilities:
         max_tokens: this.config.maxTokens,
         stream: false,
       });
-      loadingStop(`${this.config.type || "I"} have finished thinking.`);
+      loadingStop(`${this.name} have finished thinking.`);
       return response.choices[0].message.content;
     } catch (error) {
       loadingStop("AI process terminated unexpectedly." + error.message, true);
       throw error;
     }
+    // 读取test.txt文件内容
+    // const testContent = fs.readFileSync(path.resolve(__dirname, './test.txt'), 'utf8');
+    // return testContent;
   }
 
-  derictGenerateResponse(prompt) {
+  derictGenerateResponse(systemDescription, prompt) {
     const messages = [];
     messages.push({
       role: "system",
-      content:
-        "You are a professional text processing assistant, skilled in: translation, summarization, information extraction, data query, and content polishing. Please strictly follow my requirements to process the content below, **only output the processing results, no explanations, no chat, no extra content**.",
+      content: systemDescription,
     });
+    for (const message of this.conversationHistory) {
+      messages.push({
+        role: message.role,
+        content: message.content,
+      });
+    }
     messages.push({
       role: "user",
       content: prompt,
@@ -115,35 +134,38 @@ Strict Execution Rules:
    - Code MUST be clean, readable, and well-structured.
    - Use meaningful variable names and add necessary comments for complex logic.
    - Follow proper error handling patterns.
+   - Line endings: Use CRLF (\r\n) for Windows systems and LF (\n) for other systems.
      Examples:
      await baseFunction.readFile_0('file.txt')
      await outputList.createFile_0('file.txt', 'content')
-11. No ‘require()’ for built‑in functions; use ’baseFunction.funcName_0‘ or ’outputList.funcName_0‘ directly. The suffix '_0' can be any number (e.g., _1, _2, etc.).
+11. No 'require()' for built‑in functions; use 'baseFunction.funcName_0' or 'outputList.funcName_0' directly. The suffix '_0' can be any number (e.g., _1, _2, etc.).
 12. You can store and reuse return values between steps:
     const content = await baseFunction.readFile_0('a.txt');
     await baseFunction.requestAI_0(prompt + content);
-13. When writing function call parameters:
-    Prepend ‘@@ai-arg@@’ before EVERY argument.
-    Example: baseFunction.createFile_0(@@ai-arg@@"file.txt", @@ai-arg@@"content")
-14. A system variable ’outputList‘ (array) stores the return value of each step.
-15. Use ‘outputList[index]’ to reuse previous results in Nodejs code.
+13. When writing function call parameters, use standard JavaScript syntax.
+    Example: baseFunction.createFile_0("file.txt", "content")
+14. A system variable 'outputList' (array) stores the return value of each step.
+15. Use 'outputList[index]' to reuse previous results in Nodejs code.
     Example: await baseFunction.requestAI_0(outputList[1])
-16. Use ’outputList‘ as placeholder; system auto‑replaces it with real values in built-in function call.Example: baseFunction.requestAI_0(@@ai-arg@@"outputList[1]").
+16. Use 'outputList' as placeholder; system auto‑replaces it with real values in built-in function call. Example: baseFunction.requestAI_0("outputList[1]").
 
 Type Definition (MUST be strictly followed):
 - type 1: Text answer (direct response, no execution)
 - type 2: Built-in file operation function call
 - type 3: Built-in command execution (executeCommand_0)
 - type 4: Node.js code block
+- type 5: Complex thinking prompt (for multi-round thinking scenarios). When returned, the program will automatically execute the next round of conversation with the content as the prompt, and the AI should return results in the same format as before.
 
 Output Format (ABSOLUTELY CRITICAL: ONLY this JSON array, NO extra text, NO explanation, NO markdown, NO comments, NO code blocks, NO code fences, NO formatting):
 [
   {"type": 1, "content": "text", "description": "Step description"},
-  {"type": 2, "content": "baseFunction.xxx_0(...)", "description": "Step description"},
+  {"type": 2, "content": "baseFunction.xxx_0(...)\", "description": "Step description"},
+  {"type": 5, "content": "Thinking prompt for next round", "description": "Complex thinking step"},
   ...
 ]
 
 CRITICAL: Your entire response must be exactly this JSON array format. No markdown, no code blocks, no comments, no extra text of any kind. Just the raw JSON array.
+CRITICAL: You MUST return a complete, valid JSON structure. Incomplete or malformed JSON will cause execution errors.
 
 Final Constraints:
 1. If the request is a question or text task: answer directly with type 1.
@@ -157,8 +179,8 @@ Final Constraints:
 7. DO NOT include any markdown, code blocks, or any other formatting in your response.
 8. Just output the raw JSON array and nothing else.
 9. CRITICAL: In JSON strings, ALWAYS use double quotes for string values, NEVER use backticks. Backticks are not valid in JSON.
-10. CRITICAL: When string values contain double quotes, you MUST escape them with backslash (\"). Example: {"content": "baseFunction.readFile_0(@@ai-arg@@\"file.txt\")"}.
-11. CRITICAL: Ensure all JSON strings are properly escaped. The output must be valid JSON that can be parsed by JSON.parse().
+10. CRITICAL: Ensure all JSON strings are properly escaped. The output must be valid JSON that can be parsed by JSON.parse().
+11. For complex tasks that require multi-round thinking: Use type 5 with a clear thinking prompt that guides the next round of AI processing. When you return type=5, the program will automatically execute the next round of conversation with the content as the prompt for the next round. In the next round, you should return results in the same format as before, such as text, built-in functions, system commands, or code, which will be automatically executed. This is intended for scenarios where the task is too complex to solve in a single pass.
       `;
   }
 }

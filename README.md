@@ -62,15 +62,19 @@ The configuration file (`~/.ai-cmd.config.js`) has the following structure:
 
 ```javascript
 module.exports = {
-  ai: {
-    type: "deepseek", // AI service type: "ollama", "deepseek", or "openai"
-    baseUrl: "https://api.deepseek.com", // API base URL
-    model: "deepseek-reasoner", // AI model name
-    apiKey: "", // API key (required for DeepSeek and OpenAI)
-    temperature: 1, // Response randomness (0-2)
-    maxTokens: 8192, // Maximum response length
-    stream: true, // Enable/disable streaming output
-  },
+  ai: [
+    {
+      name: "default", // AI configuration name
+      type: "deepseek", // AI service type: "ollama", "deepseek", or "openai"
+      baseUrl: "https://api.deepseek.com", // API base URL
+      model: "deepseek-reasoner", // AI model name
+      apiKey: "", // API key (required for DeepSeek and OpenAI)
+      temperature: 1, // Response randomness (0-2)
+      maxTokens: 8192, // Maximum response length
+      stream: true, // Enable/disable streaming output
+    }
+  ],
+  currentAi: "default", // Current active AI configuration name
   outputAiResult: false, // Whether to output AI result
   plugins: [], // List of plugin file paths
   extensions: [], // List of extension file paths
@@ -82,10 +86,34 @@ module.exports = {
 
 ### Configuration Commands
 
-View current configuration:
+Add a new AI configuration:
 
 ```bash
-ai config view
+ai config add
+```
+
+List all AI configurations:
+
+```bash
+ai config ls
+```
+
+Set the specified AI configuration as current:
+
+```bash
+ai config use <name>
+```
+
+Delete the specified AI configuration:
+
+```bash
+ai config del <name>
+```
+
+View details of the specified AI configuration:
+
+```bash
+ai config view [name]
 ```
 
 Edit configuration file:
@@ -179,7 +207,7 @@ While local AI services like Ollama provide privacy and offline capabilities, th
 - **Complex task handling**: May struggle with multi-step or complex operations
 - **Language understanding**: Better language models are available through online services
 
-For production use or complex tasks, we recommend using DeepSeek or OpenAI services for more reliable and accurate results.
+For production use or complex tasks, we recommend using DeepSeek, OpenAI services, or Ollama's cloud service for more reliable and accurate results.
 
 ## Plugin Development
 

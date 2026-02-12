@@ -71,9 +71,9 @@ class DefaultExtension extends BaseExtension {
         description: "获取指定文件的信息，返回文件信息的对象",
       },
       {
-        name: "listDirectory",
+        name: "getFileNameList",
         params: ["dirPath"],
-        description: "列出指定目录的内容",
+        description: "获取指定目录下的所有文件名，返回文件名数组",
       },
       {
         name: "clearDirectory",
@@ -87,9 +87,9 @@ class DefaultExtension extends BaseExtension {
       },
       {
         name: "requestAI",
-        params: ["prompt"],
+        params: ["systemDescription", "prompt"],
         description:
-          "请求AI服务处理复杂任务，如随机生成一段话、翻译文本、数学计算、代码分析、知识检索等。为requestAI函数创建提示词时，重点是获取所需的精确结果，不要生成额外的步骤或命令。该函数应仅返回所需的输出",
+          "请求AI服务处理简单任务，如随机生成一段话、翻译文本、数学计算、代码分析、知识检索等。通过systemDescription参数指定AI的行为和限制，prompt参数输入任务描述。返回AI处理后的结果，仅包含所需的输出内容，不包含任何解释或额外信息，确保返回的结果能够被解析。",
       },
       {
         name: "executeJSCode",
@@ -97,22 +97,22 @@ class DefaultExtension extends BaseExtension {
         description: "执行JavaScript代码",
       },
       {
-        name: 'dayjs',
-        type: 'object',
+        name: "dayjs",
+        type: "object",
         params: [],
-        description: '内置的dayjs库, 使用dayjs库处理日期时间',
+        description: "内置的dayjs库, 使用dayjs库处理日期时间",
       },
       {
-        name: 'axios',
-        type: 'object',
+        name: "axios",
+        type: "object",
         params: [],
-        description: '内置的axios库, 用于发送HTTP请求',
+        description: "内置的axios库, 用于发送HTTP请求",
       },
       {
-        name: 'fs',
-        type: 'object',
+        name: "fs",
+        type: "object",
         params: [],
-        description: '内置的fs-extra库, 用于文件操作',
+        description: "内置的fs-extra库, 用于文件操作",
       },
     ];
   }
@@ -149,9 +149,19 @@ class DefaultExtension extends BaseExtension {
   }
 
   // 请求ai服务
-  async requestAI(prompt) {
+  async requestAI(systemDescription, prompt) {
+    if (
+      typeof systemDescription === "object" &&
+      systemDescription.systemDescription
+    ) {
+      prompt = systemDescription.prompt || prompt || "";
+      systemDescription = systemDescription.systemDescription || "";
+    }
     try {
-      const response = await this.aiService.derictGenerateResponse(prompt);
+      const response = await this.aiService.derictGenerateResponse(
+        systemDescription,
+        prompt,
+      );
       return response;
     } catch (error) {
       logError(`Error executing AI function: ${error.message}`);
@@ -161,13 +171,17 @@ class DefaultExtension extends BaseExtension {
 
   // 执行js代码
   async executeJSCode(code) {
+    if (code.startsWith("baseFunction")) {
+      code = `return (${code})`;
+    }
     try {
       const asyncFunc = new Function(
         "baseFunction",
         "outputList",
+        "require",
         "return (async () => { " + code + " })()",
       );
-      const result = await asyncFunc(this.baseFunction, this.parser.outputList);
+      const result = await asyncFunc(this.baseFunction, this.parser.outputList, require);
       return result;
     } catch (error) {
       logError(`Error executing code: ${error.stack}`);
@@ -334,15 +348,13 @@ class DefaultExtension extends BaseExtension {
     }
   }
 
-  async listDirectory(dirPath) {
+  async getFileNameList(dirPath) {
     try {
       const fullPath = path.resolve(process.cwd(), dirPath);
       if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isDirectory()) {
         return [];
       }
       const files = fs.readdirSync(fullPath);
-      // 输出当前目录下的文件名称
-      logInfo(`Files in ${dirPath}: ${files.join(", ")}`);
       return files;
     } catch (error) {
       return [];

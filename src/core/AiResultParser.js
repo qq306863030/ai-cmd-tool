@@ -34,12 +34,17 @@ class AiResultParser {
             this.outputList.push(content);
             break;
           case 2:
-            // 执行内置函数
-            this.outputList.push(await this.executeBuiltInFunction(content));
+            // 执行Node.js代码
+            this.outputList.push(
+              await this.baseFunction.executeJSCode_0(content),
+            );
             break;
           case 3:
             if (content.startsWith("baseFunction")) {
-              this.outputList.push(await this.executeBuiltInFunction(content));
+              // 执行Node.js代码
+              this.outputList.push(
+                await this.baseFunction.executeJSCode_0(content),
+              );
             } else {
               // 执行系统命令
               this.outputList.push(
@@ -48,15 +53,15 @@ class AiResultParser {
             }
             break;
           case 4:
-            if (content.startsWith("baseFunction")) {
-              this.outputList.push(await this.executeBuiltInFunction(content));
-            } else {
-              // 执行Node.js代码
-              this.outputList.push(
-                await this.baseFunction.executeJSCode_0(content),
-              );
-            }
+            // 执行Node.js代码
+            this.outputList.push(
+              await this.baseFunction.executeJSCode_0(content),
+            );
             break;
+          case 5:
+            // 递归调用ai，处理特别复杂的场景
+            await this.aiCli.run(content);
+            return
           default:
             // 默认只输出信息
             logSuccess(content);
@@ -81,69 +86,6 @@ class AiResultParser {
 
   clear() {
     this.outputList = [];
-  }
-
-  async executeBuiltInFunction(command) {
-    const trimmedCommand = command.trim();
-    if (trimmedCommand.startsWith("baseFunction")) {
-      // 执行baseFunction中的函数
-      const parseRes = this._parseFunctionStr(trimmedCommand);
-      if (!parseRes) {
-        return null;
-      }
-      const { objectName, functionName, paramsStr } = parseRes;
-      if (!objectName || !functionName) {
-        return null;
-      }
-      const args = this._parseFunctionArgs(paramsStr);
-      return await this.baseFunction[functionName](...args);
-    } else {
-      return this.executeBuiltInFunction("baseFunction." + trimmedCommand);
-    }
-  }
-
-  _parseFunctionStr(str) {
-    // 查询第一个括号的位置
-    const firstBracketIndex = str.indexOf("(");
-    if (firstBracketIndex === -1) {
-      return null;
-    }
-    const lastBracketIndex = str.lastIndexOf(")");
-    if (lastBracketIndex === -1) {
-      return null;
-    }
-    const str1 = str.slice(0, firstBracketIndex);
-    const str2 = str.slice(firstBracketIndex + 1, lastBracketIndex - 1);
-    const [objectName, functionName] = str1.split(".");
-    const paramsStr = str2;
-    // 分组解析结果
-    return {
-      objectName,
-      functionName,
-      paramsStr,
-    };
-  }
-
-  _parseFunctionArgs(argsString) {
-    const specialSymbol = "@@ai-arg@@";
-    if (argsString.includes(specialSymbol)) {
-      const parts = argsString.split(specialSymbol);
-      const args = parts.slice(1).map((arg) => {
-        let item = arg.trim().replace(/^['"]|(['"](,)?)$/g, "");
-        if (item.startsWith("outputList")) {
-          // 解析outputList[1]等
-          const index = parseInt(
-            item.replace("outputList[", "").replace("]", ""),
-          );
-          return this.outputList[index] || "";
-        }
-        return item;
-      });
-      return args;
-    } else {
-      const args = argsString.split(",");
-      return args.map((arg) => arg.trim().replace(/^['"]|(['"](,)?)$/g, ""));
-    }
   }
 }
 

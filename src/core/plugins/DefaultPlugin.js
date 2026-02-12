@@ -6,7 +6,6 @@ class DefaultPlugin extends BasePlugin {
     return rawData;
   }
 
-  
   async onAfterParse(steps) {
     if (this.aiCli.config.outputAiResult) {
       if (steps && steps.length === 1 && steps[0].type === 1) {

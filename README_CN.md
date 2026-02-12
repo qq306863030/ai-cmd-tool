@@ -62,15 +62,19 @@ ai config setup
 
 ```javascript
 module.exports = {
-  ai: {
-    type: "deepseek", // AI服务类型："ollama"、"deepseek"或"openai"
-    baseUrl: "https://api.deepseek.com", // API基础URL
-    model: "deepseek-reasoner", // AI模型名称
-    apiKey: "", // API密钥（DeepSeek和OpenAI需要）
-    temperature: 1, // 响应随机性（0-2）
-    maxTokens: 8192, // 最大响应长度
-    stream: true, // 启用/禁用流式输出
-  },
+  ai: [
+    {
+      name: "default", // AI配置名称
+      type: "deepseek", // AI服务类型："ollama"、"deepseek"或"openai"
+      baseUrl: "https://api.deepseek.com", // API基础URL
+      model: "deepseek-reasoner", // AI模型名称
+      apiKey: "", // API密钥（DeepSeek和OpenAI需要）
+      temperature: 1, // 响应随机性（0-2）
+      maxTokens: 8192, // 最大响应长度
+      stream: true, // 启用/禁用流式输出
+    }
+  ],
+  currentAi: "default", // 当前活动的AI配置名称
   outputAiResult: false, // 是否输出AI结果
   plugins: [], // 插件文件路径列表
   extensions: [], // 扩展文件路径列表
@@ -82,10 +86,34 @@ module.exports = {
 
 ### 配置命令
 
-查看当前配置：
+添加新的AI配置：
 
 ```bash
-ai config view
+ai config add
+```
+
+列出所有AI配置：
+
+```bash
+ai config ls
+```
+
+设置指定的AI配置为当前配置：
+
+```bash
+ai config use <name>
+```
+
+删除指定的AI配置：
+
+```bash
+ai config del <name>
+```
+
+查看指定AI配置的详细信息：
+
+```bash
+ai config view [name]
 ```
 
 编辑配置文件：
@@ -178,7 +206,7 @@ ai "将model目录下的所有文件按月份分类到model2目录中，日期�
 - **复杂任务处理**：在多步骤或复杂操作上可能遇到困难
 - **语言理解**：在线服务提供更好的语言模型
 
-对于生产环境或复杂任务，我们建议使用DeepSeek或OpenAI服务，以获得更可靠和准确的结果。
+对于生产环境或复杂任务，我们建议使用DeepSeek或OpenAI服务，或Ollama中的云端服务，以获得更可靠和准确的结果。
 
 ## 插件开发
 
