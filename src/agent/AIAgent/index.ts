@@ -1,4 +1,4 @@
-import { BaseMessage, createAgent, DynamicStructuredTool, HumanMessage, ReactAgent, summarizationMiddleware, todoListMiddleware } from 'langchain';
+import { BaseMessage, createAgent, DynamicStructuredTool, HumanMessage, ReactAgent, summarizationMiddleware, SystemMessage, todoListMiddleware } from 'langchain';
 import { createPatchToolCallsMiddleware } from 'deepagents';
 import { FileSystemSaver } from './utils/langgraph-checkpoint-filesystem';
 import { getModel } from '../models';
@@ -16,6 +16,7 @@ import { getSkills } from '../skills';
 import type { AgentRoomClient } from '@/serve/service/agent-room/agent-client';
 import TaskQueue from '@/cli/cli-utils/TaskQueue';
 import os from 'os';
+import fs from 'fs-extra';
 import SubAIAgent from './SubAgents/SubAIAgent';
 import { getDefaultWorkspace } from '@/cli/cli-utils/getGlobalPath';
 
@@ -125,7 +126,21 @@ export default class AIAgent extends EventEmitterSuper {
         isUseMemory: this.isUseMemory,
       }),
     });
-    await checkpointer.init(this.threadId, agent);
+
+    const lastErrorSessionPath = await checkpointer.init(this.threadId, agent);
+    if (lastErrorSessionPath && fs.existsSync(lastErrorSessionPath)) {
+      const content = fs.readFileSync(lastErrorSessionPath, 'utf-8');
+      if (content) {
+        const errorSystemMessage = new SystemMessage(
+          `说明：以下是上一次交互中未完成或出错中断的会话历史记录（文件路径：${lastErrorSessionPath}）：\n\`\`\`text\n${content}\n\`\`\``
+        );
+        await agent.updateState(
+          { configurable: { thread_id: this.threadId } },
+          { messages: [errorSystemMessage] },
+        );
+      }
+    }
+
     this.agent = agent;
     this.taskQueue = new TaskQueue(this.id);
     !this.isSilence && this.initEvents();
@@ -135,7 +150,7 @@ export default class AIAgent extends EventEmitterSuper {
     const humanMessage = new HumanMessage(input);
     this.messages.push(humanMessage);
     const stream = await this.agent.stream(
-      { messages: this.messages },
+      { messages: [humanMessage] },
       {
         streamMode: ['messages'],
         recursionLimit: 2000,

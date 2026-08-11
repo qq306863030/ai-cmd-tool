@@ -25,20 +25,37 @@ export class FileSystemSaver extends BaseCheckpointSaver {
     this.pathResolver = new StorePathResolver(rootFolder, splitter);
   }
 
-  // 还原到最后一次会话结束时的检查点
-  async init(agentId: string, agent: ReactAgent<any>) {
-    const { lastCheckPointId, allCheckPointId } = await this.getLastCheckPointId(agentId, agent);
+  // 还原到最后一次会话结束时的检查点，如有中断/错误历史则保存为文本文件
+  async init(agentId: string, agent: ReactAgent<any>): Promise<string | null> {
+    const { lastCheckPointId, allCheckPointId, interruptedSnaps } = await this.getLastCheckPointId(agentId, agent);
+    let errorFilePath: string | null = null;
+
+    // 如果存在未完成/异常中断的快照，将其提取保存为文本文件
+    if (interruptedSnaps.length > 0) {
+      const latestInterruptedSnap = interruptedSnaps[0];
+      const messages = latestInterruptedSnap?.values?.messages || [];
+      if (messages.length > 0) {
+        const formattedText = this.formatMessagesToText(messages, latestInterruptedSnap.next);
+        const threadDir = this.pathResolver.getThreadPath(agentId);
+        await checkOrCreateFolder(threadDir);
+        errorFilePath = join(threadDir, 'last_error_session.txt');
+        await writeBinary(errorFilePath, Buffer.from(formattedText, 'utf-8'));
+      }
+    }
+
     if (lastCheckPointId && allCheckPointId.includes(lastCheckPointId)) {
       for (const checkpointId of allCheckPointId) {
         if (checkpointId !== lastCheckPointId) {
-          // 删除
+          // 删除中断/废弃的检查点
           const checkpointPath = this.pathResolver.getCheckpointFolderPath(agentId, this.pathResolver.defaultCheckpointNs, checkpointId);
           await safeDeleteFile(checkpointPath);
         } else {
-          break
+          break;
         }
       }
     }
+
+    return errorFilePath;
   }
 
   async getLastCheckPointId(agentId: string, agent: ReactAgent<any>) {
@@ -46,18 +63,62 @@ export class FileSystemSaver extends BaseCheckpointSaver {
     const history = [];
     // 关键：agent.graph 才是原生编译后的 LangGraph 实例
     const compiledGraph = agent.graph;
-    const checkPointIds = []
-    // 遍历历史快照
+    const checkPointIds = [];
+    // 遍历历史快照（最新到最旧）
     for await (const state of compiledGraph.getStateHistory(threadConfig)) {
       history.push(state);
       checkPointIds.push(state.config.configurable?.['checkpoint_id']);
     }
     // 找走完END(next为空)的快照
-    const finishSnap = history.find((s) => s.next.length === 0);
-    return {
-      lastCheckPointId: finishSnap?.config.configurable?.['checkpoint_id'],
-      allCheckPointId: checkPointIds,
+    const finishSnapIndex = history.findIndex((s) => s.next.length === 0);
+    let lastCheckPointId: string | undefined = undefined;
+    let interruptedSnaps: any[] = [];
+
+    if (finishSnapIndex !== -1) {
+      lastCheckPointId = history[finishSnapIndex].config.configurable?.['checkpoint_id'];
+      // finishSnap 之前的快照均为未完成/中断快照
+      interruptedSnaps = history.slice(0, finishSnapIndex);
+    } else {
+      // 若完全没有完成的快照，则全部快照均为中断快照
+      interruptedSnaps = history;
     }
+
+    return {
+      lastCheckPointId,
+      allCheckPointId: checkPointIds,
+      interruptedSnaps,
+    };
+  }
+
+  private formatMessagesToText(messages: any[], nextNodes: string[] = []): string {
+    const lines: string[] = [];
+    lines.push(`=== 上次未完成/出错会话历史记录 ===`);
+    lines.push(`记录时间: ${new Date().toLocaleString()}`);
+    if (nextNodes && nextNodes.length > 0) {
+      lines.push(`中断时待执行节点: ${nextNodes.join(', ')}`);
+    }
+    lines.push(`-----------------------------------\n`);
+
+    for (const msg of messages) {
+      const type = msg._getType ? msg._getType() : (msg.role || 'message');
+      const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+      
+      if (type === 'human' || type === 'user') {
+        lines.push(`[User]: ${content}`);
+      } else if (type === 'ai' || type === 'assistant') {
+        lines.push(`[AI]: ${content}`);
+        if (msg.tool_calls && msg.tool_calls.length > 0) {
+          lines.push(`[AI Tool Calls]: ${JSON.stringify(msg.tool_calls, null, 2)}`);
+        }
+      } else if (type === 'tool') {
+        lines.push(`[Tool Return (${msg.name || msg.tool_call_id || ''})]: ${content}`);
+      } else {
+        lines.push(`[${type}]: ${content}`);
+      }
+      lines.push('');
+    }
+
+    return lines.join('\n');
   }
 
    async *list(config: RunnableConfig, options?: CheckpointListOptions) {
